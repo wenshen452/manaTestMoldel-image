@@ -38,7 +38,7 @@ jobs:
         uses: denoland/deployctl@v1
         with:
           project: "wenshen452-manatestmol-85"
-          entrypoint: "https://deno.land/std@0.217.0/http/file_server.ts"
+          entrypoint: "main.ts"
           root: "dist"
           
           
