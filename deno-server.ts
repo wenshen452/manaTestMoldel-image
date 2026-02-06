@@ -96,8 +96,12 @@ async function generateImage(prompt: string, referenceImage: string | null) {
 async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   
+  console.log(`[REQUEST] ${req.method} ${url.pathname}`);
+  console.log(`[REQUEST URL] ${req.url}`);
+  
   // 处理 OPTIONS 预检请求
   if (req.method === "OPTIONS") {
+    console.log("[OPTIONS] Handling preflight request");
     return new Response(null, {
       status: 200,
       headers: {
@@ -110,19 +114,27 @@ async function handler(req: Request): Promise<Response> {
 
   // 静态文件服务 - 返回HTML
   if (url.pathname === "/" && req.method === "GET") {
-    const html = await Deno.readTextFile("./index.html");
-    return new Response(html, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-      },
-    });
+    console.log("[ROOT] Serving index.html");
+    try {
+      const html = await Deno.readTextFile("./index.html");
+      return new Response(html, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+        },
+      });
+    } catch (error) {
+      console.error("[ROOT] Error reading index.html:", error);
+      return new Response("Error loading page", { status: 500 });
+    }
   }
 
   // API 端点
   if (url.pathname === "/api/generate" && req.method === "POST") {
+    console.log("[API] Processing /api/generate request");
     try {
       const body = await req.json();
+      console.log("[API] Request body:", body);
       const { prompt, referenceImage } = body;
 
       if (!prompt) {
@@ -145,6 +157,7 @@ async function handler(req: Request): Promise<Response> {
         },
       });
     } catch (error) {
+      console.error("[API] Error:", error);
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
         {
@@ -155,6 +168,7 @@ async function handler(req: Request): Promise<Response> {
     }
   }
 
+  console.log(`[404] Path not found: ${url.pathname}`);
   // 404
   return new Response("Not Found", { status: 404 });
 }
