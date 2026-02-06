@@ -39,6 +39,6 @@ jobs:
         with:
           project: "wenshen452-manatestmol-58"
           entrypoint: "main.ts"
-          root: "dist"
+          root: ""
           
           
