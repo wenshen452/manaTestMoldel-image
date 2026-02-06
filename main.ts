@@ -1,57 +1,96 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { HfInference } from "npm:@huggingface/inference@2.8.1";
 
 const HF_TOKEN = Deno.env.get("HF_TOKEN") || "";
 
 console.log("Server starting...");
 console.log("HF_TOKEN set:", HF_TOKEN ? "YES" : "NO");
 
-const hf = new HfInference(HF_TOKEN);
-
 async function generateImage(prompt: string, referenceImage: string | null) {
   console.log("Generating image...");
   console.log("Prompt:", prompt);
+  console.log("Has reference:", !!referenceImage);
 
   try {
-    let blob;
+    let response: Response;
 
     if (referenceImage) {
-      // 使用参考图进行生成
-      const imageBuffer = Uint8Array.from(
-        atob(referenceImage.split(',')[1]),
-        c => c.charCodeAt(0)
-      );
-
-      blob = await hf.imageToImage({
-        provider: "auto",
-        model: "black-forest-labs/FLUX.1-Kontext-dev",
-        inputs: imageBuffer,
+      // 使用参考图进行生成 - 使用 fal-ai 端点
+      const imageData = {
+        inputs: referenceImage,
         parameters: {
           prompt: prompt,
           strength: 0.7,
-        },
-      });
+        }
+      };
+
+      response = await fetch(
+        "https://router.huggingface.co/fal-ai/fal-ai/flux-kontext/dev?_subdomain=queue",
+        {
+          headers: {
+            "Authorization": `Bearer ${HF_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify(imageData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+
+      // fal-ai 返回 JSON，包含图片 URL
+      if (result && result.image && result.image.url) {
+        // 下载图片
+        const imageResponse = await fetch(result.image.url);
+        const buffer = await imageResponse.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+        return {
+          success: true,
+          imageBase64: `data:image/png;base64,${base64}`,
+        };
+      } else {
+        throw new Error("Invalid response from API");
+      }
     } else {
       // 纯文本生成
-      blob = await hf.textToImage({
-        provider: "auto",
-        model: "black-forest-labs/FLUX.1-dev",
+      const imageData = {
         inputs: prompt,
         parameters: {
           guidance_scale: 3.5,
           num_inference_steps: 28,
         }
-      });
+      };
+
+      response = await fetch(
+        "https://router.huggingface.co/models/black-forest-labs/FLUX.1-dev",
+        {
+          headers: {
+            "Authorization": `Bearer ${HF_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify(imageData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API Error ${response.status}: ${errorText}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+      return {
+        success: true,
+        imageBase64: `data:image/png;base64,${base64}`,
+      };
     }
-
-    // 将 Blob 转换为 base64
-    const buffer = await blob.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-
-    return {
-      success: true,
-      imageBase64: `data:image/png;base64,${base64}`,
-    };
   } catch (error: any) {
     console.error("Generation error:", error);
     return {
