@@ -24,7 +24,7 @@ async function generateImage(prompt: string, referenceImage: string | null) {
     };
 
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev",
+      "https://router.huggingface.co/huggingface-projects/black-forest-labs/FLUX.1-dev",
       {
         headers,
         method: "POST",
