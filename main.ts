@@ -1,43 +1,51 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { HfInference } from "npm:@huggingface/inference@2.8.1";
 
 const HF_TOKEN = Deno.env.get("HF_TOKEN") || "";
 
 console.log("Server starting...");
 console.log("HF_TOKEN set:", HF_TOKEN ? "YES" : "NO");
 
+const hf = new HfInference(HF_TOKEN);
+
 async function generateImage(prompt: string, referenceImage: string | null) {
   console.log("Generating image...");
-  console.log("Prompt:", prompt); 
+  console.log("Prompt:", prompt);
 
   try {
-    const headers: HeadersInit = {
-      "Authorization": `Bearer ${HF_TOKEN}`,
-      "Content-Type": "application/json",
-    };
+    let blob;
 
-    const data = {
-      inputs: prompt,
-      parameters: {
-        guidance_scale: 3.5,
-        num_inference_steps: 28,
-      }
-    };
+    if (referenceImage) {
+      // 使用参考图进行生成
+      const imageBuffer = Uint8Array.from(
+        atob(referenceImage.split(',')[1]),
+        c => c.charCodeAt(0)
+      );
 
-    const response = await fetch(
-      "https://router.huggingface.co/huggingface-projects/black-forest-labs/FLUX.1-dev",
-      {
-        headers,
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error ${response.status}: ${errorText}`);
+      blob = await hf.imageToImage({
+        provider: "auto",
+        model: "black-forest-labs/FLUX.1-Kontext-dev",
+        inputs: imageBuffer,
+        parameters: {
+          prompt: prompt,
+          strength: 0.7,
+        },
+      });
+    } else {
+      // 纯文本生成
+      blob = await hf.textToImage({
+        provider: "auto",
+        model: "black-forest-labs/FLUX.1-dev",
+        inputs: prompt,
+        parameters: {
+          guidance_scale: 3.5,
+          num_inference_steps: 28,
+        }
+      });
     }
 
-    const buffer = await response.arrayBuffer();
+    // 将 Blob 转换为 base64
+    const buffer = await blob.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
     return {
@@ -84,7 +92,7 @@ async function handler(req: Request): Promise<Response> {
   if (url.pathname === "/api/generate" && req.method === "POST") {
     try {
       const body = await req.json();
-      const { prompt } = body;
+      const { prompt, referenceImage } = body;
 
       if (!prompt) {
         return new Response(
@@ -93,7 +101,7 @@ async function handler(req: Request): Promise<Response> {
         );
       }
 
-      const result = await generateImage(prompt, null);
+      const result = await generateImage(prompt, referenceImage || null);
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: {
