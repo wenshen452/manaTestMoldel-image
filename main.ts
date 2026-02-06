@@ -7,7 +7,7 @@ console.log("HF_TOKEN set:", HF_TOKEN ? "YES" : "NO");
 
 async function generateImage(prompt: string, referenceImage: string | null) {
   console.log("Generating image...");
-  console.log("Prompt:", prompt);
+  console.log("Prompt:", prompt); 
 
   try {
     const headers: HeadersInit = {
