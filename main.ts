@@ -4,6 +4,8 @@ const HF_TOKEN = Deno.env.get("HF_TOKEN") || "";
 
 console.log("Server starting...");
 console.log("HF_TOKEN set:", HF_TOKEN ? "YES" : "NO");
+console.log("HF_TOKEN length:", HF_TOKEN.length);
+console.log("HF_TOKEN prefix:", HF_TOKEN ? HF_TOKEN.substring(0, 10) + "..." : "empty");
 
 async function generateImage(prompt: string, referenceImage: string | null) {
   console.log("Generating image...");
@@ -14,17 +16,22 @@ async function generateImage(prompt: string, referenceImage: string | null) {
     let response: Response;
 
     if (referenceImage) {
-      // 使用参考图进行生成 - 使用 fal-ai 端点
+      // 使用参考图进行生成 - 使用 Stable Diffusion XL 的 img2img 功能
+      const imageBuffer = Uint8Array.from(
+        atob(referenceImage.split(',')[1]),
+        c => c.charCodeAt(0)
+      );
+
       const imageData = {
-        inputs: referenceImage,
-        parameters: {
+        inputs: {
+          image: Array.from(imageBuffer),
           prompt: prompt,
-          strength: 0.7,
+          num_inference_steps: 28,
         }
       };
 
       response = await fetch(
-        "https://router.huggingface.co/fal-ai/fal-ai/flux-kontext/dev?_subdomain=queue",
+        "https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
         {
           headers: {
             "Authorization": `Bearer ${HF_TOKEN}`,
@@ -40,22 +47,13 @@ async function generateImage(prompt: string, referenceImage: string | null) {
         throw new Error(`API Error ${response.status}: ${errorText}`);
       }
 
-      const result = await response.json();
+      const buffer = await response.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
 
-      // fal-ai 返回 JSON，包含图片 URL
-      if (result && result.image && result.image.url) {
-        // 下载图片
-        const imageResponse = await fetch(result.image.url);
-        const buffer = await imageResponse.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-
-        return {
-          success: true,
-          imageBase64: `data:image/png;base64,${base64}`,
-        };
-      } else {
-        throw new Error("Invalid response from API");
-      }
+      return {
+        success: true,
+        imageBase64: `data:image/png;base64,${base64}`,
+      };
     } else {
       // 纯文本生成
       const imageData = {
