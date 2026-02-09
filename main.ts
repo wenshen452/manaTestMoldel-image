@@ -16,29 +16,21 @@ async function generateImage(prompt: string, referenceImage: string | null) {
     let response: Response;
 
     if (referenceImage) {
-      // 使用参考图进行生成 - 使用 Stable Diffusion XL 的 img2img 功能
-      const imageBuffer = Uint8Array.from(
-        atob(referenceImage.split(',')[1]),
-        c => c.charCodeAt(0)
-      );
-
-      const imageData = {
-        inputs: {
-          image: Array.from(imageBuffer),
-          prompt: prompt,
-          num_inference_steps: 28,
-        }
-      };
-
+      // 使用参考图进行生成 - 使用 qwen-image-edit 模型
       response = await fetch(
-        "https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+        "https://router.huggingface.co/replicate/v1/models/qwen/qwen-image-edit/predictions",
         {
           headers: {
             "Authorization": `Bearer ${HF_TOKEN}`,
             "Content-Type": "application/json",
           },
           method: "POST",
-          body: JSON.stringify(imageData),
+          body: JSON.stringify({
+            "inputs": referenceImage,
+            "parameters": {
+              prompt: prompt,
+            }
+          })
         }
       );
 
@@ -47,13 +39,27 @@ async function generateImage(prompt: string, referenceImage: string | null) {
         throw new Error(`API Error ${response.status}: ${errorText}`);
       }
 
-      const buffer = await response.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const result = await response.json();
 
-      return {
-        success: true,
-        imageBase64: `data:image/png;base64,${base64}`,
-      };
+      // 返回的 JSON 格式处理
+      if (result && result.image) {
+        return {
+          success: true,
+          imageBase64: result.image, // 可能已经返回 base64 格式
+        };
+      } else if (result && result.url) {
+        // 如果返回 URL，下载图片
+        const imageResponse = await fetch(result.url);
+        const buffer = await imageResponse.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+        return {
+          success: true,
+          imageBase64: `data:image/png;base64,${base64}`,
+        };
+      } else {
+        throw new Error("Invalid response format");
+      }
     } else {
       // 纯文本生成
       const imageData = {
